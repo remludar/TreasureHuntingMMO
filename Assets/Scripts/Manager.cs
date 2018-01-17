@@ -29,6 +29,8 @@ public class Manager : NetworkManager
 
         foreach (GameObject go in spawnPrefabs)
             ClientScene.RegisterPrefab(go);
+
+        
     }
     #endregion
 

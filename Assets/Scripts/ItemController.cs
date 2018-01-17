@@ -12,14 +12,15 @@ public class ItemController : NetworkBehaviour
     Material itemHighlightMaterial;
     GameObject playerGO;
     NotificationTextController notificationController;
+    NetworkIdentity netId;
 
     bool isMouseButton1 = false;
     bool isInRangeOfPlayer = false;
     float moveSpeed = 50.0f;
 
+    Vector3 clientMotion;
     Vector3 serverPosition;
 
-    #region Monobehaviors
     void Start()
     {
         serverPosition = transform.position;
@@ -29,20 +30,24 @@ public class ItemController : NetworkBehaviour
         itemMaterial = GetComponentInChildren<MeshRenderer>().material;
         itemHighlightMaterial = Resources.Load("Materials/ItemHighlight") as Material;
         notificationController = GameObject.Find("Notification Text").GetComponent<NotificationTextController>();
+        netId = GetComponent<NetworkIdentity>();
     }
 
     void LateUpdate()
     {
         if (isClient)
         {
-            CmdSendDataToServer(transform.position);
+            transform.Translate(clientMotion);
+            SendDataToServer();
+            clientMotion = Vector3.zero;
+
         }
         if (isServer)
         {
-            transform.position = serverPosition;
-        }    
+            SendDataToClient();
+        }
     }
-
+    [Client]
     void OnMouseEnter()
     {
         var meshRenderers = GetComponentsInChildren<MeshRenderer>();
@@ -51,6 +56,7 @@ public class ItemController : NetworkBehaviour
             meshRenderers[i].material = itemHighlightMaterial;
         }
     }
+    [Client]
     void OnMouseExit()
     {
         var meshRenderers = GetComponentsInChildren<MeshRenderer>();
@@ -64,9 +70,57 @@ public class ItemController : NetworkBehaviour
     {
         playerGO = GameObject.FindGameObjectWithTag("Player");
 
-        isInRangeOfPlayer = _isPlayerInRange();
+        isInRangeOfPlayer = IsPlayerInRange();
         if (isInRangeOfPlayer)
         {
+            SetItemProperties(true);
+            CmdSetItemProperties(true);
+        }
+        else
+        {
+            notificationController.AddMessage("That's too far away!");
+        }
+    }
+    [Client]
+    void OnMouseDrag()
+    {
+        if (!isMouseButton1 && isInRangeOfPlayer)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            float deltaX = Input.GetAxis("Mouse X") * moveSpeed * Time.deltaTime;
+            float deltaY = Input.GetAxis("Mouse Y") * moveSpeed * Time.deltaTime;
+            clientMotion = (playerGO.transform.forward * deltaY) + (playerGO.transform.right * deltaX);
+        }
+    }
+    [Client]
+    void OnMouseUp()
+    {
+        SetItemProperties(false);
+        CmdSetItemProperties(false);
+    }
+
+    private bool IsPlayerInRange()
+    {
+        float distance = Vector3.Distance(transform.position, playerGO.transform.position);
+        return distance <= 5;
+    }
+    private void SendDataToServer()
+    {
+        CmdSendMotionDataToServer(clientMotion);
+    }
+    private void SendDataToClient()
+    {
+        RpcSendPositionToClient(transform.position);
+    }
+    private void SetItemProperties(bool isPlayerControlled)
+    {
+        if (isPlayerControlled)
+        {
+            //var id = GetComponent<NetworkIdentity>().netId;
+            //CmdAssignNetworkAuthority(id);
+
+            notificationController.AddMessage("Turning gravity off");
+            clientMotion = new Vector3(0, 1.25f, 0);
             var colliders = GetComponentsInChildren<CapsuleCollider>();
             for (int i = 0; i < colliders.Length; i++)
             {
@@ -77,72 +131,63 @@ public class ItemController : NetworkBehaviour
             rb.isKinematic = true;
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
-
-            //Perform raycast down from item to get terrain Y
-            RaycastHit hit;
-            if (Physics.Raycast(gameObject.transform.position, Vector3.down, out hit))
-            {
-                //var newPosition = new Vector3(0, hit.point.y + 0.25f, 0);
-                //transform.position += newPosition;
-                transform.position = new Vector3(transform.position.x, hit.point.y + 1.25f, transform.position.z);
-                CmdSendDataToServer(new Vector3(transform.position.x, hit.point.y + 1.25f, transform.position.z));
-            }
         }
         else
         {
-            notificationController.AddMessage("That's too far away!");
+            notificationController.AddMessage("Turning gravity on");
+            clientMotion = new Vector3(0, 0, 0);
+            var colliders = GetComponentsInChildren<CapsuleCollider>();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                colliders[i].enabled = true;
+            }
+            rb.useGravity = true;
+            rb.freezeRotation = false;
+            rb.isKinematic = false;
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
         }
     }
-    void OnMouseDrag()
-    {
-        if (!isMouseButton1 && isInRangeOfPlayer)
-        {
-            float deltaX = Input.GetAxis("Mouse X") * moveSpeed * Time.deltaTime;
-            float deltaY = Input.GetAxis("Mouse Y") * moveSpeed * Time.deltaTime;
-            Vector3 newPosition = (playerGO.transform.forward * deltaY) + (playerGO.transform.right * deltaX);
-            transform.position += newPosition;
-            CmdSendDataToServer(transform.position);
-        }
-    }
-    void OnMouseUp()
-    {
-        var colliders = GetComponentsInChildren<CapsuleCollider>();
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            colliders[i].enabled = true;
-        }
-        rb.useGravity = true;
-        rb.freezeRotation = false;
-        rb.isKinematic = false;
-        Cursor.visible = true;
-        Cursor.lockState = CursorLockMode.None;
-    }
-    #endregion
 
-    #region Private Helpers
-    private bool _isPlayerInRange()
-    {
-        float distance = Vector3.Distance(transform.position, playerGO.transform.position);
-        return distance <= 5;
-    }
-    #endregion
-
-    #region Commands and RPCs
     [Command]
-    void CmdSendDataToServer(Vector3 newPosition)
+    void CmdSendMotionDataToServer(Vector3 motionFromClient)
     {
-        //transform.position = newPosition;
-        serverPosition = newPosition;
+        transform.Translate(motionFromClient);
+        serverPosition = transform.position;
     }
 
-    //[ClientRpc]
-    //void RpcSendDataToClient(Vector3 newPosition)
-    //{
-    //    itemTransform.Translate(newPosition);
-    //    //GameObject item = Instantiate(Resources.Load("Prefabs/Items/Fishing Rod")) as GameObject;
-    //    //item.transform.Translate(new Vector3(2, 3, 2));
-    //}
-    #endregion 
+    [Command]
+    void CmdSetItemProperties(bool isPlayerControlled)
+    {
+        SetItemProperties(isPlayerControlled);
+    }
+
+    [Command]
+    void CmdPrintMessageOnServer(string message)
+    {
+        notificationController.AddMessage(message);
+    }
+
+    [Command]
+    void CmdAssignNetworkAuthority(NetworkInstanceId toId)
+    {
+
+
+        GameObject client = NetworkServer.FindLocalObject(toId);
+        var conn = client.GetComponent<NetworkIdentity>().connectionToClient;
+        var result = GetComponent<NetworkIdentity>().AssignClientAuthority(conn);
+
+        notificationController.AddMessage(client.ToString());
+        notificationController.AddMessage(conn.ToString());
+        notificationController.AddMessage(result.ToString());
+
+    }
+
+    [ClientRpc]
+    void RpcSendPositionToClient(Vector3 positionFromServer)
+    {
+        transform.position = positionFromServer;
+    }
 
 
 

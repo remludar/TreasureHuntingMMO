@@ -13,19 +13,15 @@ public class NetworkPlayer : NetworkBehaviour
     CharacterController cc;
     Canvas uiCanvas;
     GameObject inventoryGO;
-    GameObject itemDraggingGO;
 
-    #region Player Control
+    NotificationTextController notificationController;
+
     //Motion
     Vector3 motionFromClient;
-    Vector3 motionFromServer;
-    Vector3 clientPosition;
     Vector3 serverPosition;
 
     //Rotation
     float rotationFromClient;
-    float rotationFromServer;
-    Quaternion clientRotation;
     Quaternion serverRotation;
 
     [SerializeField]
@@ -35,30 +31,22 @@ public class NetworkPlayer : NetworkBehaviour
     [SerializeField]
     float gravity = -0.5f;
 
-    #endregion
-
-    #region Player Input
-    bool isSpaceBar = false;
-    #endregion
-
-    #region Monobehaviors
     void Awake()
     {
         networkManager = GameObject.Find("NetworkManager").GetComponent<Manager>();
     }
-
     void Start()
     {
         cc = GetComponent<CharacterController>();
         uiCanvas = GameObject.FindObjectOfType<Canvas>();
-        
+        notificationController = GameObject.Find("Notification Text").GetComponent<NotificationTextController>();
+
         if (isLocalPlayer)
         {
             SetupCamera();
             SetupInventory();
         }
     }
-
     void Update()
     {
         if (isClient)
@@ -71,18 +59,20 @@ public class NetworkPlayer : NetworkBehaviour
     {
         if (isClient)
         {
+            if (isLocalPlayer)
+            {
+                cc.Move(motionFromClient);
+                transform.Rotate(new Vector3(0, rotationFromClient, 0));
+            }
             SendDataToServer();
         }
 
         if (isServer)
         {
             SendDataToClient();
-            CorrectClientData();
         }
     }
-    #endregion
 
-    #region private helpers
     void SetupCamera()
     {
         //Parent player to camera and set camera starting position
@@ -107,12 +97,14 @@ public class NetworkPlayer : NetworkBehaviour
         var cameraRight = Camera.main.transform.right;
         motionFromClient = ((cameraRight * horizontal) + (cameraForward * veritcal));
         motionFromClient.y = gravity;
+        motionFromClient *= moveSpeed;
 
         //Player Rotation
         if (Input.GetMouseButton(1))
             rotationFromClient = Input.GetAxis("Mouse X");
         else
             rotationFromClient = 0;
+        rotationFromClient *= rotateSpeed;
 
         //UI
         if (Input.GetKeyDown(KeyCode.I))
@@ -127,48 +119,14 @@ public class NetworkPlayer : NetworkBehaviour
     void SendDataToServer()
     {
         CmdSendMotionDataToServer(motionFromClient);
-        CmdSendPositionToServer(transform.position);
         CmdSendRotationDataToServer(rotationFromClient);
-        CmdSendRotationToServer(transform.rotation);
     }
     void SendDataToClient()
     {
-        RpcSendMotionDataToClient(motionFromServer);
         RpcSendPositionToClient(transform.position);
-        RpcSendRotationDataToClient(rotationFromServer);
         RpcSendRotationToClient(transform.rotation);
     }
-    void CorrectClientData()
-    {
-        CorrectClientPosition();
-        CorrectClientRotation();
-    }
-    void CorrectClientPosition()
-    {
-        //If the client desynchs position in any way larger than 0.1f, we snap to the server position.
-        if ((Mathf.Abs(clientPosition.x - serverPosition.x) > 0.1f) || (Mathf.Abs(clientPosition.z - serverPosition.z) > 0.1f))
-        {
-            if (isClient)
-            {
-                transform.position = Vector3.Lerp(transform.position, serverPosition, 0.5f);
-            }
-        }
-    }
-    void CorrectClientRotation()
-    {
-        //If the client desynchs rotation in any way larger than 0.1f, we snap to the server rotation.
-        if ((Mathf.Abs(clientRotation.y - serverRotation.y) > 0.1f))
-        {
-            if (isClient)
-            {
-                transform.rotation = Quaternion.Slerp(transform.rotation, serverRotation, 0.5f);
-            }
-        }
-    }
-    #endregion
 
-    #region Commands and RPCs
-    //Item Spawning
     [Command]
     void CmdSpawnItemsOnServer()
     {
@@ -183,62 +141,28 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    //Motion Input
     [Command]
     void CmdSendMotionDataToServer(Vector3 motionFromClient)
     {
-        motionFromServer = motionFromClient * moveSpeed;
-        cc.Move(motionFromServer);
-        serverPosition = transform.position;
+        cc.Move(motionFromClient);
+        serverPosition = transform.position;    
     }
-
-    [ClientRpc]
-    void RpcSendMotionDataToClient(Vector3 motionFromServer)
-    {
-        cc.Move(motionFromServer);
-        clientPosition = transform.position;
-    }
-
-    //Position
-    [Command]
-    void CmdSendPositionToServer(Vector3 positionFromClient)
-    {
-        clientPosition = positionFromClient;
-    }
-
-    [ClientRpc]
-    void RpcSendPositionToClient(Vector3 positionFromServer)
-    {
-        serverPosition = positionFromServer;
-    }
-
-    //Rotation Input
     [Command]
     void CmdSendRotationDataToServer(float rotationFromClient)
     {
-        rotationFromServer = rotationFromClient * rotateSpeed;
-        transform.Rotate(new Vector3(0, rotationFromServer, 0));
+        transform.Rotate(new Vector3(0, rotationFromClient, 0));
         serverRotation = transform.rotation;
     }
-
+    
     [ClientRpc]
-    void RpcSendRotationDataToClient(float rotationFromServer)
+    void RpcSendPositionToClient(Vector3 positionFromServer)
     {
-        transform.Rotate(new Vector3(0, rotationFromServer, 0));
-        clientRotation = transform.rotation;
+        transform.position = Vector3.Lerp(transform.position, positionFromServer, 0.5f);
     }
-
-    //Rotation
-    [Command]
-    void CmdSendRotationToServer(Quaternion rotationFromClient)
-    {
-        clientRotation = rotationFromClient;
-    }
-
     [ClientRpc]
     void RpcSendRotationToClient(Quaternion rotationFromServer)
     {
-        serverRotation = rotationFromServer;
+        transform.rotation = Quaternion.Lerp(transform.rotation, rotationFromServer, 0.5f);
     }
-    #endregion
+
 }
