@@ -1,0 +1,66 @@
+Mechanics:
+Treasure Maps lead to treasure guarded by mobs.  They're the main source of coins. 
+
+Immediate Goals:
+[x]	Add in game notification window
+[x]	Spawn a fishing rod onto the ground
+[x]	Player can click-drag item in the world
+[x]	Player walks up to it and when within range can click-drag it into their inventory
+[ ]		Upon dragging into inventory window area, it changes to fishing rod inventory icon
+[ ]		It will snap to inventory slots until released
+[ ]		Player can also drop it back onto the ground by click dragging from inventory 
+[ ]		Upon dragging out of the inventory window, it turns back into the world icon
+
+Add ability to just drop onto character which puts it into the first available inventory slots
+Add ability to just drop right outside inventory window.  if too far from character it drops on the ground by the character.
+
+[]		Fix all this to work in the authoritative server arch
+
+
+====SCRATCH PAD=====
+Tell the server what you'd like to do
+Go ahead and do the thing client side
+Tell the server what you did
+Correct any discrepency with the server always winning.
+
+
+TakeInput
+	- Process Input
+	- Send Input to server to process
+	- Receive Server process results
+	- Correct self using server results if there's a delta outside a threshold
+
+
+Player
+		- Move with keyboard
+			- client capture keyboard input
+			- client sends input to server (cmd)
+			- server calculates movement vec3 based on client passed input
+			- server moves player transform 
+			- server stores postion in a vec3
+			- client moves player transform (rpc)
+			- client stores position in a vec3
+			
+Items
+		- Move with click-drag
+			- client capture mouse input
+			- client sends input to server (cmd)
+			- server calculates movement vec3 based on client passed input
+			- server moves item transform
+			- server stores position in a vec3
+			- client moves item trasnform (rpc)
+			- client stores position in a vec3
+====SCRATCH PAD=====
+
+
+
+====BACKUP NOTES====
+20172609_140600:
+- Working (sorta) draggable inventory.  Gonna try and change it so that the dragging only works on a specific part of the control in next build.
+20170927_113300:
+- Draggable inventory works perfectly now.  Next item will be implementing an actual inventory system.
+20170928_152300:
+- Updated Unity to 2017.1.1
+20170930_130500:
+- Notification panel working. Still working on remainder of inventory control pieces.
+====BACKUP NOTES====
