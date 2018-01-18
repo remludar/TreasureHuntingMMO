@@ -9,7 +9,7 @@ using System.Linq;
 [RequireComponent(typeof(Canvas))]
 public class NetworkPlayer : NetworkBehaviour
 {
-    Manager networkManager;
+    NetManager networkManager;
     CharacterController cc;
     Canvas uiCanvas;
     GameObject inventoryGO;
@@ -33,14 +33,13 @@ public class NetworkPlayer : NetworkBehaviour
 
     void Awake()
     {
-        networkManager = GameObject.Find("NetworkManager").GetComponent<Manager>();
+        networkManager = GameObject.Find("NetworkManager").GetComponent<NetManager>();
     }
     void Start()
     {
         cc = GetComponent<CharacterController>();
         uiCanvas = GameObject.FindObjectOfType<Canvas>();
         notificationController = GameObject.Find("Notification Text").GetComponent<NotificationTextController>();
-
         if (isLocalPlayer)
         {
             SetupCamera();
@@ -72,6 +71,8 @@ public class NetworkPlayer : NetworkBehaviour
             SendDataToClient();
         }
     }
+
+
 
     void SetupCamera()
     {
@@ -109,12 +110,6 @@ public class NetworkPlayer : NetworkBehaviour
         //UI
         if (Input.GetKeyDown(KeyCode.I))
             inventoryGO.SetActive(!inventoryGO.activeSelf);
-
-        //TEST
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            CmdSpawnItemsOnServer();
-        }
     }
     void SendDataToServer()
     {
@@ -134,7 +129,7 @@ public class NetworkPlayer : NetworkBehaviour
         {
             var prefab = Instantiate(go, new Vector3(Random.Range(0,5), Random.Range(0, 5), Random.Range(0, 5)), Quaternion.identity) as GameObject;
             prefab.name = networkManager.UpdateItemName(prefab);
-            networkManager.spawnedItems.Add(prefab);
+            networkManager.itemsToSpawn.Add(prefab);
 
             //NetworkServer.Spawn(prefab);
             NetworkServer.SpawnWithClientAuthority(prefab, gameObject);
@@ -153,7 +148,94 @@ public class NetworkPlayer : NetworkBehaviour
         transform.Rotate(new Vector3(0, rotationFromClient, 0));
         serverRotation = transform.rotation;
     }
-    
+
+    [Command]
+    void CmdSendMessageToServer(string message)
+    {
+        notificationController.AddMessage(message);
+    }
+
+    [Command]
+    void CmdGetNetworkAuthority(NetworkInstanceId toId)
+    {
+        GameObject client = NetworkServer.FindLocalObject(toId);
+        var conn = client.GetComponent<NetworkIdentity>().connectionToClient;
+        var result = GetComponent<NetworkIdentity>().AssignClientAuthority(conn);
+
+        notificationController.AddMessage(client.ToString());
+        notificationController.AddMessage(conn.ToString());
+        notificationController.AddMessage(result.ToString());
+    }
+
+    [Command]
+    void CmdSendItemMotionDataToServer(NetworkInstanceId id, Vector3 clientMotion)
+    {
+        ItemController itemController= null;
+        var itemControllers = FindObjectsOfType<ItemController>();
+        foreach (ItemController item in itemControllers)
+        {
+            if (item.netId.Value == id.Value)
+            {
+                itemController = item;
+            }
+        }
+        itemController.transform.Translate(clientMotion);
+        //serverPosition = transform.position;
+    }
+
+    [Command]
+    void CmdSetItemPropertiesOnServer(NetworkInstanceId playerId, NetworkInstanceId itemId, bool isPlayerControlled, Vector3 clientMotion)
+    {
+        NetworkPlayer networkPlayer = null;
+        var networkPlayers = FindObjectsOfType<NetworkPlayer>();
+        foreach (NetworkPlayer player in networkPlayers)
+        {
+            if (player.netId.Value == playerId.Value)
+            {
+                networkPlayer = player;
+            }
+        }
+
+        ItemController itemController = null;
+        var itemControllers = FindObjectsOfType<ItemController>();
+        foreach (ItemController item in itemControllers)
+        {
+            if (item.netId.Value == itemId.Value)
+            {
+                itemController = item;
+            }
+        }
+
+        if (isPlayerControlled)
+        {
+            clientMotion = new Vector3(0, 1.25f, 0);
+            var colliders = GetComponentsInChildren<CapsuleCollider>();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                colliders[i].enabled = false;
+            }
+            itemController.rb.useGravity = false;
+            itemController.rb.freezeRotation = true;
+            itemController.rb.isKinematic = true;
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
+        }
+        else
+        {
+            clientMotion = new Vector3(0, 0, 0);
+            var colliders = GetComponentsInChildren<CapsuleCollider>();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                colliders[i].enabled = true;
+            }
+            itemController.rb.useGravity = true;
+            itemController.rb.freezeRotation = false;
+            itemController.rb.isKinematic = false;
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+        }
+    }
+
     [ClientRpc]
     void RpcSendPositionToClient(Vector3 positionFromServer)
     {
@@ -165,4 +247,26 @@ public class NetworkPlayer : NetworkBehaviour
         transform.rotation = Quaternion.Lerp(transform.rotation, rotationFromServer, 0.5f);
     }
 
+
+
+
+    public void SendMessageToServer(string message)
+    {
+        CmdSendMessageToServer(message);
+    }
+
+    public void GetNetworkAuthority(NetworkInstanceId id)
+    {
+        CmdGetNetworkAuthority(id);
+    }
+
+    public void SendItemMotionDataToServer(NetworkInstanceId id, Vector3 clientMotion)
+    {
+        CmdSendItemMotionDataToServer(id, clientMotion);
+    }
+
+    public void SetItemPropertiesOnServer(NetworkInstanceId playerId, NetworkInstanceId itemId, bool isPlayerControlled, Vector3 clientMotion)
+    {
+        CmdSetItemPropertiesOnServer(playerId, itemId, isPlayerControlled, clientMotion);
+    }
 }

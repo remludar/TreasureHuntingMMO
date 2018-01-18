@@ -78,10 +78,11 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\Scripts\GameManager.cs" />
     <Compile Include="Assets\Scripts\InventoryHandleController.cs" />
     <Compile Include="Assets\Scripts\InventoryIconController.cs" />
     <Compile Include="Assets\Scripts\ItemController.cs" />
-    <Compile Include="Assets\Scripts\Manager.cs" />
+    <Compile Include="Assets\Scripts\NetManager.cs" />
     <Compile Include="Assets\Scripts\NetworkPlayer.cs" />
     <Compile Include="Assets\Scripts\NotificationTextController.cs" />
   </ItemGroup>

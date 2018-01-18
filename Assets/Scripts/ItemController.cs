@@ -6,33 +6,42 @@ using UnityEngine.Networking;
 
 public class ItemController : NetworkBehaviour
 {
-    Rigidbody rb;
+    public Rigidbody rb;
     Transform itemTransform;
     Material itemMaterial;
     Material itemHighlightMaterial;
     GameObject playerGO;
     NotificationTextController notificationController;
-    NetworkIdentity netId;
+    NetworkPlayer networkPlayer;
 
     bool isMouseButton1 = false;
     bool isInRangeOfPlayer = false;
     float moveSpeed = 50.0f;
 
-    Vector3 clientMotion;
+    public Vector3 clientMotion;
     Vector3 serverPosition;
 
     void Start()
     {
         serverPosition = transform.position;
-
         rb = GetComponent<Rigidbody>();
         itemTransform = GetComponent<Transform>();
         itemMaterial = GetComponentInChildren<MeshRenderer>().material;
         itemHighlightMaterial = Resources.Load("Materials/ItemHighlight") as Material;
         notificationController = GameObject.Find("Notification Text").GetComponent<NotificationTextController>();
-        netId = GetComponent<NetworkIdentity>();
+        if (isClient)
+        {
+            var networkPlayers = FindObjectsOfType<NetworkPlayer>();
+            foreach(NetworkPlayer player in networkPlayers)
+            {
+                if (player.playerControllerId == 0)
+                {
+                    playerGO = player.gameObject;
+                    networkPlayer = player;
+                }
+            }
+        }
     }
-
     void LateUpdate()
     {
         if (isClient)
@@ -40,13 +49,13 @@ public class ItemController : NetworkBehaviour
             transform.Translate(clientMotion);
             SendDataToServer();
             clientMotion = Vector3.zero;
-
         }
         if (isServer)
         {
-            SendDataToClient();
+            //SendDataToClient();
         }
     }
+
     [Client]
     void OnMouseEnter()
     {
@@ -68,13 +77,11 @@ public class ItemController : NetworkBehaviour
     [Client]
     void OnMouseDown()
     {
-        playerGO = GameObject.FindGameObjectWithTag("Player");
-
         isInRangeOfPlayer = IsPlayerInRange();
         if (isInRangeOfPlayer)
         {
             SetItemProperties(true);
-            CmdSetItemProperties(true);
+            SetItemPropertiesOnServer(true);
         }
         else
         {
@@ -96,8 +103,9 @@ public class ItemController : NetworkBehaviour
     void OnMouseUp()
     {
         SetItemProperties(false);
-        CmdSetItemProperties(false);
+        SetItemPropertiesOnServer(false);
     }
+
 
     private bool IsPlayerInRange()
     {
@@ -106,7 +114,7 @@ public class ItemController : NetworkBehaviour
     }
     private void SendDataToServer()
     {
-        CmdSendMotionDataToServer(clientMotion);
+        networkPlayer.SendItemMotionDataToServer(netId, clientMotion);
     }
     private void SendDataToClient()
     {
@@ -116,10 +124,7 @@ public class ItemController : NetworkBehaviour
     {
         if (isPlayerControlled)
         {
-            //var id = GetComponent<NetworkIdentity>().netId;
-            //CmdAssignNetworkAuthority(id);
-
-            notificationController.AddMessage("Turning gravity off");
+            networkPlayer.GetNetworkAuthority(networkPlayer.netId);
             clientMotion = new Vector3(0, 1.25f, 0);
             var colliders = GetComponentsInChildren<CapsuleCollider>();
             for (int i = 0; i < colliders.Length; i++)
@@ -134,7 +139,6 @@ public class ItemController : NetworkBehaviour
         }
         else
         {
-            notificationController.AddMessage("Turning gravity on");
             clientMotion = new Vector3(0, 0, 0);
             var colliders = GetComponentsInChildren<CapsuleCollider>();
             for (int i = 0; i < colliders.Length; i++)
@@ -148,49 +152,18 @@ public class ItemController : NetworkBehaviour
             Cursor.lockState = CursorLockMode.None;
         }
     }
-
-    [Command]
-    void CmdSendMotionDataToServer(Vector3 motionFromClient)
+    private void SetItemPropertiesOnServer(bool isPlayerControlled)
     {
-        transform.Translate(motionFromClient);
-        serverPosition = transform.position;
+        networkPlayer.SetItemPropertiesOnServer(networkPlayer.netId, netId, isPlayerControlled, clientMotion);
     }
 
-    [Command]
-    void CmdSetItemProperties(bool isPlayerControlled)
-    {
-        SetItemProperties(isPlayerControlled);
-    }
-
-    [Command]
-    void CmdPrintMessageOnServer(string message)
-    {
-        notificationController.AddMessage(message);
-    }
-
-    [Command]
-    void CmdAssignNetworkAuthority(NetworkInstanceId toId)
-    {
 
 
-        GameObject client = NetworkServer.FindLocalObject(toId);
-        var conn = client.GetComponent<NetworkIdentity>().connectionToClient;
-        var result = GetComponent<NetworkIdentity>().AssignClientAuthority(conn);
-
-        notificationController.AddMessage(client.ToString());
-        notificationController.AddMessage(conn.ToString());
-        notificationController.AddMessage(result.ToString());
-
-    }
 
     [ClientRpc]
     void RpcSendPositionToClient(Vector3 positionFromServer)
     {
         transform.position = positionFromServer;
     }
-
-
-
-
 
 }
